@@ -52,27 +52,50 @@ def calcular_rentabilidade_real(taxa_nominal_anual, taxa_inflacao_anual):
     return rentabilidade_real
 # ADICIONE ESTA FUNÇÃO NO services.py
 
+# Em services.py
+# (O resto do arquivo continua igual, só mude esta função)
+
 def get_dados_economicos_reais():
     """
-    Busca Selic, IPCA e já calcula a rentabilidade real.
-    Retorna uma tupla (selic, ipca, rentabilidade_real_decimal)
-    Retorna (None, None, None) em caso de falha.
+    Busca Selic, IPCA e já calcula as rentabilidades reais (Bruta e Líquida).
+    Retorna uma tupla (selic, ipca, rentabilidade_real_bruta, rentabilidade_real_liquida)
+    Retorna (None, None, None, None) em caso de falha.
     """
+    # Esta é a alíquota de Imposto de Renda para investimentos de longo prazo
+    ALIQUOTA_IR_LONGO_PRAZO = 0.15 # 15%
+    
     taxa_selic_percent = buscar_taxa_selic_bcb()
     taxa_ipca_percent = buscar_taxa_ipca_bcb()
 
     if taxa_selic_percent is None or taxa_ipca_percent is None:
-        return None, None, None
+        return None, None, None, None # <-- MUDANÇA AQUI
 
+    # 1. Converter para decimais
     taxa_selic_decimal = taxa_selic_percent / 100
     taxa_ipca_decimal = taxa_ipca_percent / 100
 
-    rentabilidade_real_decimal = calcular_rentabilidade_real(
+    # 2. Calcular a rentabilidade real BRUTA (como era antes)
+    rentabilidade_real_bruta = calcular_rentabilidade_real(
         taxa_selic_decimal, taxa_ipca_decimal
     )
-
-    return taxa_selic_percent, taxa_ipca_percent, rentabilidade_real_decimal
-# ADICIONE ESTA FUNÇÃO NO services.py
+    
+    # 3. Calcular a rentabilidade LÍQUIDA (A GRANDE MUDANÇA)
+    
+    # Primeiro, aplicamos o imposto sobre o ganho nominal (Selic)
+    ganho_nominal_liquido_decimal = taxa_selic_decimal * (1 - ALIQUOTA_IR_LONGO_PRAZO) # Ex: 10.5% * (1 - 0.15) = 8.925%
+    
+    # Segundo, calculamos a rentabilidade real em cima desse ganho líquido
+    rentabilidade_real_liquida = calcular_rentabilidade_real(
+        ganho_nominal_liquido_decimal, taxa_ipca_decimal # ( (1 + 0.08925) / (1 + 0.0468) ) - 1
+    )
+    
+    # 4. Retorna os 4 valores
+    return (
+        taxa_selic_percent, 
+        taxa_ipca_percent, 
+        rentabilidade_real_bruta, 
+        rentabilidade_real_liquida
+    )
 
 def calcular_projecao_meta(
     valor_inicial: float,
