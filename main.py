@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 
 # 1. IMPORTA as funções do nosso novo arquivo "services"
 import services
-
+import schemas
 # --- Configuração da Aplicação ---
 app = FastAPI()
 
@@ -50,30 +50,54 @@ def get_taxa_ipca():
     return {"ipca_acumulado_12m": taxa}
 
 
+# SUBSTITUA O ENDPOINT ANTIGO POR ESTE
 @app.get("/rentabilidade-real")
 def get_rentabilidade_real():
     """
     Endpoint que busca Selic, IPCA e calcula a rentabilidade real.
     """
     print("Recebida requisição para /rentabilidade-real")
-    
-    # 4. CHAMA os serviços
-    taxa_selic_percent = services.buscar_taxa_selic_bcb() # <-- Mudou!
-    taxa_ipca_percent = services.buscar_taxa_ipca_bcb() # <-- Mudou!
 
-    if taxa_selic_percent is None or taxa_ipca_percent is None:
+    selic, ipca, rentabilidade_real = services.get_dados_economicos_reais()
+
+    if rentabilidade_real is None:
         raise HTTPException(status_code=500, detail="Não foi possível buscar os dados do BCB (Selic ou IPCA).")
 
-    taxa_selic_decimal = taxa_selic_percent / 100
-    taxa_ipca_decimal = taxa_ipca_percent / 100
-
-    # 5. CHAMA o serviço
-    rentabilidade_real_decimal = services.calcular_rentabilidade_real(taxa_selic_decimal, taxa_ipca_decimal) # <-- Mudou!
-    
-    rentabilidade_real_percent = rentabilidade_real_decimal * 100
-
     return {
-        "taxa_selic_anual": taxa_selic_percent,
-        "ipca_acumulado_12m": taxa_ipca_percent,
-        "rentabilidade_real_anual": round(rentabilidade_real_percent, 2)
+        "taxa_selic_anual": selic,
+        "ipca_acumulado_12m": ipca,
+        "rentabilidade_real_anual": round(rentabilidade_real * 100, 2)
     }
+# ADICIONE ESTE NOVO ENDPOINT NO FINAL DO main.py
+
+@app.post("/projetar-meta")
+def projetar_meta(request: schemas.ProjecaoRequest):
+    """
+    Recebe os dados do usuário e calcula a projeção para atingir a meta
+    usando a rentabilidade real atual.
+    """
+    print(f"Recebida requisição para /projetar-meta com dados: {request}")
+
+    # 1. Pega os dados econômicos atuais
+    _, _, rentabilidade_real_decimal = services.get_dados_economicos_reais()
+
+    if rentabilidade_real_decimal is None:
+        raise HTTPException(status_code=500, detail="Não foi possível buscar os dados do BCB para o cálculo.")
+
+    try:
+        # 2. Chama a super calculadora
+        projecao = services.calcular_projecao_meta(
+            valor_inicial=request.valor_inicial,
+            aporte_mensal=request.aporte_mensal,
+            meses_sem_aporte_por_ano=request.meses_por_ano_sem_aporte,
+            meta_financeira=request.meta_financeira,
+            taxa_real_anual=rentabilidade_real_decimal
+        )
+        return projecao
+
+    except ValueError as e:
+        # Captura o erro (ex: 100 anos)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Captura qualquer outro erro inesperado
+        raise HTTPException(status_code=500, detail=f"Erro interno no cálculo: {e}")
